@@ -1,0 +1,65 @@
+HELM — VISUAL ABSTRACT: IMAGE-GENERATION PROMPT
+================================================
+Best canvas: a WIDE landscape banner, about 16:9 or 2:1 (e.g. 1800x900 px). It sits
+at the top of a two-column IEEE page, so keep it readable when shrunk to one column.
+
+--------------------------------------------------------------------
+SHORT PROMPT (paste this into the image AI)
+--------------------------------------------------------------------
+A clean, flat, professional scientific "graphical abstract" for a federated-learning
+research paper, white background, minimal vector infographic style, thin rounded
+rectangles, crisp sans-serif labels, muted navy-blue and grey with one magenta/pink
+accent and a green highlight. Three zones connected left to right by arrows.
+LEFT: four stacked rounded boxes labeled "Edge Cluster 1" (tagged "weak / mobile") to
+"Edge Cluster 4" (tagged "strong / fixed"); inside each, a small pink chip labeled
+"PPO actor" and a row of four small device dots with two of them highlighted pink
+("selected clients"). MIDDLE: a blue rounded box labeled "CLOUD SERVER" containing two
+stacked sub-boxes, "FedAvg aggregation (every round)" and a pink-outlined
+"Policy federation (every T_RL, soft-update alpha)", plus a small grey box
+"reward = accuracy - energy - Gini". Draw TWO distinct arrows from every edge cluster to
+the cloud: a solid blue arrow labeled "model" and a dashed pink arrow labeled "policy".
+RIGHT: four numbered callout boxes: "1 Hierarchical per-cluster RL selection (avoids
+over-selection)", "2 Grounded energy (Joules) + fairness (Gini) in one reward",
+"3 Policy federation is lossless: one shared policy, ~zero cost", "4 Pareto-optimal on
+accuracy / energy / fairness". BOTTOM: a thin green banner reading "Real FEMNIST + MNIST:
+-26 to -33% energy and -15 to -17% Gini vs centralized RL; -16 to -33% Gini vs Oort at
+equal accuracy; advantage grows with scale; federation is free". Modern flat 2D
+infographic, generous whitespace, no photorealism, no 3D, high resolution,
+publication quality.
+
+--------------------------------------------------------------------
+STYLE NOTES
+--------------------------------------------------------------------
+- Flat 2D schematic, NOT a photo, NOT a 3D render.
+- Palette: ink navy (#1a2233) text, blue (#2f6fb0) for cloud/model links, magenta/pink
+  (#c72a6b) for "ours"/policy accents, green (#2e9e5b) for the results banner,
+  light grey (#e9edf2) cluster boxes and grey (#6b7280) device dots.
+- The KEY visual is the TWO different arrows (solid blue "model" vs dashed pink
+  "policy") between clouds and clusters — make them clearly distinct.
+- Large, legible labels; minimal text; lots of whitespace.
+
+--------------------------------------------------------------------
+IF THE AI GARBLES THE TEXT (very common)
+--------------------------------------------------------------------
+Ask it to "generate the boxes, icons and arrows only, no text", then add all labels
+yourself in PowerPoint / Canva / Figma. OR rebuild it cleanly in a diagram tool
+(draw.io / Excalidraw / Mermaid) using the exact element list below — that gives a
+correct, paper-quality figure fastest.
+
+ELEMENT LIST (for a diagram tool, left to right):
+  LEFT COLUMN (4 boxes): "Edge Cluster 1 (weak/mobile)" ... "Edge Cluster 4
+    (strong/fixed)"; each contains a pink "PPO actor" chip + 4 device dots (2 pink).
+  CENTER: "CLOUD SERVER" box with sub-boxes:
+    - "FedAvg aggregation (every round)"
+    - "Policy federation: average phi_c + soft-update alpha (every T_RL)"
+    - "reward = accuracy - energy - Gini"
+  CONNECTIONS cloud <-> each cluster: TWO arrows — solid blue "model", dashed pink
+    "policy".
+  RIGHT COLUMN (4 numbered boxes): the four contributions listed in the short prompt.
+  BOTTOM: green results banner (text from the short prompt).
+
+--------------------------------------------------------------------
+WHERE IT GOES
+--------------------------------------------------------------------
+Save the final image as paper/figs/visual_abstract_helm.png (overwrite the current
+one) and the paper compiles unchanged — Fig. 1 already points at that file.

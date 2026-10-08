@@ -1,0 +1,65 @@
+seed: 42
+num_seeds: 5
+num_clients: 40
+num_clusters: 4
+clients_per_cluster:
+- 10
+- 10
+- 10
+- 10
+num_classes: 10
+num_features: 20
+num_rounds: 100
+T_FL: 1
+T_RL: 5
+methods:
+- random
+- full
+- oort
+- centralized_rl
+- federated_marl
+federation:
+  alpha: 0.5
+  mode: soft
+rl:
+  k_select: 3
+  lr_actor: 0.0003
+  lr_critic: 0.001
+  ppo_epochs: 3
+  clip_eps: 0.2
+  entropy_coef: 0.01
+  update_every_n_rounds: 1
+  reward_weights:
+    accuracy: 1.0
+    energy: 0.1
+    fairness: 0.05
+fl:
+  local_epochs: 2
+  batch_size: 32
+  lr: 0.01
+  hidden1: 128
+  hidden2: 64
+data:
+  dirichlet_alpha: 0.1
+  num_samples_per_client: 200
+churn:
+  mode: mild
+  dropout_prob: 0.1
+  battery_drain_per_round: 0.05
+network:
+  bandwidth_mean: 10.0
+  bandwidth_std: 5.0
+  latency_mean: 0.05
+  round_deadline: 1.0
+logging:
+  save_csv: true
+  save_plots: true
+  results_dir: results_v2/hard_selection/
+  verbose: true
+energy:
+  e_compute_per_mac_j: 1.0e-09
+  e_comm_per_bit_j: 1.0e-07
+  fwd_bwd_factor: 3.0
+  min_efficiency: 0.1
+_note: 'Selection-sensitive config (L7): extreme non-IID + tight budget to test whether
+  RL beats Random.'

@@ -1,0 +1,85 @@
+# configs/battery_drain0.yaml
+# ----------------------------
+# CONTROL RUN: battery_drain_per_round=0, dropout_prob=0.
+#
+# PURPOSE: Isolate whether Oort's underperformance vs. Random is caused by
+# the battery churn interaction (batteries deplete faster for high-utility
+# clients Oort prefers) or by a genuine implementation/assumption mismatch.
+#
+# EXPECTED OUTCOMES:
+#   - If Oort recovers and beats Random: battery interaction confirmed; the
+#     explanation in NOTES.md was correct.
+#   - If Oort still underperforms Random: OortSelector has a bug or the
+#     make_classification dataset doesn't provide the loss-informativeness
+#     signal Oort relies on (utility score not predictive on tabular data).
+#
+# Run as:
+#   python run_experiment.py --config configs/battery_drain0.yaml --method all --seeds 1
+
+seed: 42
+num_seeds: 1
+
+num_clients: 40
+num_clusters: 4
+clients_per_cluster: [10, 10, 10, 10]
+num_classes: 10
+num_features: 20
+
+num_rounds: 100
+T_FL: 1
+T_RL: 5          # Policy FEDERATION cadence (federated_marl only)
+
+methods:
+  - random
+  - full
+  - oort
+  - centralized_rl
+  - federated_marl
+
+federation:
+  alpha: 0.5
+  mode: soft
+
+rl:
+  k_select: 5
+  lr_actor: 3.0e-4
+  lr_critic: 1.0e-3
+  ppo_epochs: 3
+  clip_eps: 0.2
+  entropy_coef: 0.01
+  update_every_n_rounds: 1    # PPO fires every round (equal gradient budget for CRL and FMARL)
+  reward_weights:
+    accuracy: 1.0
+    energy: 0.1
+    fairness: 0.05
+
+fl:
+  local_epochs: 2
+  batch_size: 32
+  lr: 0.01
+  hidden1: 128
+  hidden2: 64
+
+data:
+  dirichlet_alpha: 0.5
+  num_samples_per_client: 200
+
+# ── CONTROL: zero churn ────────────────────────────────────────────────────
+# Both parameters zeroed so all 40 clients remain available for all 100 rounds.
+# This removes battery-driven client dropout from the comparison entirely.
+churn:
+  mode: none
+  dropout_prob: 0.0
+  battery_drain_per_round: 0.0
+
+network:
+  bandwidth_mean: 10.0
+  bandwidth_std: 5.0
+  latency_mean: 0.05
+  round_deadline: 30.0
+
+logging:
+  save_csv: true
+  save_plots: true
+  results_dir: results/battery_drain0/
+  verbose: true

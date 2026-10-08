@@ -1,0 +1,42 @@
+VISUAL ABSTRACT — IMAGE GENERATION PROMPT (FedRL-CS)
+=====================================================
+Use this with an image/diagram AI. A wide, landscape banner (about 3:1, e.g.
+1800x600 px) works best because it sits across the top of a two-column IEEE page.
+
+--- SHORT PROMPT (paste this) ---
+A clean, flat, professional scientific "graphical abstract" banner for a
+federated-learning research paper, light background, three panels connected
+left-to-right by arrows. LEFT panel titled "PROBLEM": small icons of many mobile
+phones / IoT devices, text "Which devices train each round? Limited battery,
+weak networks, fairness — data never leaves the device". MIDDLE panel titled
+"METHOD": a two-tier diagram of a cloud on top connected to four edge-server
+boxes, each edge box containing a small "RL agent" chip icon, with two labeled
+arrows between cloud and edges: "model aggregation (T_FL)" and "policy federation
+(T_RL, alpha)"; caption "Per-cluster RL agents select clients AND share their
+selection policy". RIGHT panel titled "RESULTS (20 seeds)": three bold stat call-
+outs "-28% energy", "-15% inequality (Gini)", "accuracy: tie (p<1e-18)" and a
+small note "advantage is structural". Modern flat vector style, muted blues/greys
+with one pink accent, thin rounded rectangles, generous whitespace, crisp sans-
+serif labels, no photorealism, no clutter, publication quality.
+
+--- STYLE NOTES ---
+- Flat 2D infographic / schematic, NOT a photo, NOT 3D render.
+- Palette: ink navy (#1a2233) text, blue (#2196F3) for cloud/links, pink
+  (#E91E63) accent for "ours"/results, green (#2e9e5b) for the positive numbers,
+  light grey device icons on an off-white (#ffffff/#f4f6f9) ground.
+- Keep it readable at small size; large legible labels; minimal text.
+
+--- IF THE AI GARBLES TEXT (common) ---
+Generate the layout/icons only and add the text yourself in PowerPoint / Canva /
+Figma, OR use a diagram tool (draw.io, Excalidraw, Mermaid). The three-panel
+Problem -> Method -> Results structure is the key thing to keep.
+
+--- FALLBACK ---
+A ready-made matplotlib version (visual_abstract.png) was generated earlier and is
+in the previous results bundle if you prefer to use or trace over that instead of
+generating a new one.
+
+--- WHERE IT GOES ---
+Replace the placeholder box (Fig. 1) in fedrlcs_frost_style.tex: swap the \fbox{...}
+block for  \includegraphics[width=0.95\textwidth]{figs/visual_abstract.png}
+(save the generated image as paper/figs/visual_abstract.png).

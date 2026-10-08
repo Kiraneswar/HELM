@@ -1,0 +1,6 @@
+method,label,n_seeds,acc_mean,acc_std,energy_mean,energy_std,gini_mean,gini_std,stragglers_per_round
+federated_marl,Federated MARL (Ours),5,89.25,1.2087,513.167,53.5972,0.4963,0.0165,4.926
+random,Random,5,88.4875,1.0226,515.508,56.6954,0.4939,0.018,4.978
+centralized_rl,Centralized RL,5,88.6125,1.3859,755.4159,87.3665,0.5809,0.0161,9.106
+full,Full Participation,5,76.925,5.2651,795.0407,94.3414,0.5784,0.0136,9.74
+oort,Oort (Heuristic),5,88.7625,0.7007,501.6753,44.4403,0.5087,0.0224,4.664

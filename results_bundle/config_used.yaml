@@ -1,0 +1,83 @@
+# configs/full_experiment.yaml
+# -----------------------------
+# FULL EXPERIMENT CONFIG: Paper-scale comparison run.
+# 40 clients / 4 clusters / 100 rounds / 5 seeds.
+# Estimated runtime: 30-60 minutes on CPU depending on hardware.
+#
+# Run with:
+#   python run_experiment.py --config configs/full_experiment.yaml --method all
+
+seed: 42
+num_seeds: 5
+
+# Topology (confirmed scale: correctness first, scale later)
+num_clients: 40
+num_clusters: 4
+clients_per_cluster: [10, 10, 10, 10]
+num_classes: 10
+num_features: 20
+
+# Cadences
+num_rounds: 100
+T_FL: 1
+T_RL: 5          # Policy FEDERATION cadence (federated_marl only)
+
+# Methods to compare
+methods:
+  - random
+  - full
+  - oort
+  - centralized_rl
+  - federated_marl
+
+# Policy federation
+federation:
+  alpha: 0.5
+  mode: soft
+
+# RL hyperparameters
+rl:
+  k_select: 5
+  lr_actor: 3.0e-4
+  lr_critic: 1.0e-3
+  ppo_epochs: 3
+  clip_eps: 0.2
+  entropy_coef: 0.01
+  update_every_n_rounds: 1    # PPO fires every round (equal gradient budget for CRL and FMARL)
+  reward_weights:
+    accuracy: 1.0
+    energy: 0.1
+    fairness: 0.05
+
+# FL training
+fl:
+  local_epochs: 2
+  batch_size: 32
+  lr: 0.01
+  hidden1: 128
+  hidden2: 64
+
+# Data
+data:
+  dirichlet_alpha: 0.5
+  num_samples_per_client: 200
+
+# Churn
+churn:
+  mode: mild
+  dropout_prob: 0.1
+  battery_drain_per_round: 0.05
+
+# Network
+network:
+  bandwidth_mean: 10.0
+  bandwidth_std: 5.0
+  latency_mean: 0.05
+  round_deadline: 30.0
+
+# Logging
+logging:
+  save_csv: true
+  save_plots: true
+  results_dir: results/full/
+  verbose: true

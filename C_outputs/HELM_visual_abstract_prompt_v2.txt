@@ -1,0 +1,56 @@
+HELM (v2) — VISUAL ABSTRACT PROMPT  (updated for the Byzantine-resilient paper)
+================================================================================
+This is DIFFERENT from the earlier prompt: the new paper adds a second pillar
+(Byzantine resilience / HELM-Guard), so the abstract must show BOTH fairness and
+robustness. Use a WIDE landscape banner (~2:1, e.g. 1800x900 px) for the top of a
+two-column IEEE page.
+
+--- SHORT PROMPT (paste this into an image AI) ---
+A clean, flat, professional scientific "graphical abstract" banner for a
+federated-learning research paper, white background, minimal vector infographic
+style, thin rounded rectangles, crisp sans-serif labels, muted navy-blue and grey
+with one magenta/pink accent, a green highlight for results and a red accent for the
+attack. Layout in three zones connected left to right by arrows.
+LEFT zone titled "EDGE CLUSTERS": four stacked rounded boxes "Edge Cluster 1" (tag
+"weak / mobile") to "Edge Cluster 4" (tag "strong / fixed"); each contains a small
+pink chip "PPO actor" and a row of four device dots with two highlighted. Mark the
+top cluster with a small red warning badge labeled "compromised region".
+MIDDLE zone titled "CLOUD SERVER": a blue rounded box with three stacked sub-boxes:
+"FedAvg every round", a pink-outlined "Policy federation (T_RL, alpha) - lossless",
+and a green-outlined "Two-level robust aggregation (HELM-Guard)". Two distinct
+arrows run from each edge cluster to the cloud: a solid blue arrow "model" and a
+dashed pink arrow "policy".
+RIGHT zone titled "RESULTS (real FEMNIST + MNIST)": four numbered callout boxes:
+"1 Pareto-optimal: accuracy = baselines, lower energy & Gini",
+"2 Structurally fairer: -7.7% Gini vs centralized RL (p=0.034)",
+"3 Scales to 320 clients; advantage grows",
+"4 Byzantine-resilient: 74.5% vs 9.3% under a 60% regional attack (+65 pts)".
+BOTTOM: a thin two-tone banner - green left half "Fair & efficient: matches
+accuracy at lower energy, structurally fairer" and red-tinted right half
+"Byzantine-resilient: survives a compromised edge region that collapses FedAvg".
+Modern flat 2D infographic, generous whitespace, no photorealism, no 3D, high
+resolution, publication quality.
+
+--- STYLE / COLORS ---
+- Flat 2D schematic, NOT a photo, NOT 3D.
+- ink navy #1a2233 text; blue #2f6fb0 cloud/model; magenta/pink #c72a6b ours/policy;
+  green #2e9e5b results/robust; red #c0392b attack/compromised.
+- Two distinct cloud<->cluster arrows (solid blue "model" vs dashed pink "policy")
+  are the key mechanism - keep them clearly different.
+- Large, legible labels; minimal text.
+
+--- KEY DIFFERENCE FROM v1 ---
+Added: (a) a "compromised region" red badge on one cluster, (b) a green
+"two-level robust aggregation (HELM-Guard)" box in the cloud, (c) the Byzantine
+result (74.5% vs 9.3%, +65 pts) in the results, (d) a two-tone fair+robust banner.
+Removed: the "energy reward steering" framing (the paper reports it as lossless).
+
+--- IF THE AI GARBLES TEXT (common) ---
+Ask for "boxes, icons and arrows only, no text" and add labels yourself in
+PowerPoint / Canva / draw.io. Keep the three-zone Edge -> Cloud -> Results layout
+and the two coloured banners.
+
+--- WHERE IT GOES ---
+Save as paper/figs/visual_abstract_helm.png (overwrite) and Fig. 1 renders it
+unchanged. The version currently in the paper is clean and correct - a generated
+image is an optional upgrade and will likely need label cleanup.

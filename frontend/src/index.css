@@ -1,0 +1,48 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { @apply bg-[#03001C] text-white; }
+  body { @apply min-h-screen antialiased; }
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-white/5 backdrop-blur-md border border-white/10;
+  }
+  .glass-hover {
+    @apply hover:bg-white/8 hover:border-white/20 transition-all duration-200;
+  }
+  .text-mono { font-family: 'JetBrains Mono', monospace; }
+  .glow-violet {
+    box-shadow: 0 0 24px rgba(139,92,246,0.25), 0 0 48px rgba(139,92,246,0.12);
+  }
+  .glow-pink {
+    box-shadow: 0 0 24px rgba(236,72,153,0.3), 0 0 48px rgba(236,72,153,0.12);
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: rgba(255,255,255,0.03); }
+::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.4); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(139,92,246,0.7); }
+
+/* Recharts tooltip override */
+.recharts-tooltip-wrapper .recharts-default-tooltip {
+  background: rgba(6,0,60,0.95) !important;
+  border: 1px solid rgba(139,92,246,0.4) !important;
+  border-radius: 8px !important;
+  font-family: 'Inter', sans-serif !important;
+  font-size: 13px !important;
+}
+
+/* Smooth page transitions */
+.page-enter { animation: fadeSlide 0.25s ease forwards; }
+@keyframes fadeSlide {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}

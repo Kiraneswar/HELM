@@ -1,0 +1,8 @@
+method,label,acc_mean,acc_std,energy_mean,energy_std,gini_mean,gini_std,stragglers
+federated_marl,Federated MARL (Ours),45.25,6.1202,1254.2327,122.6047,0.4169,0.0258,9.4533
+random,Random,46.8625,6.899,1257.9063,119.3827,0.4155,0.0263,9.45
+oort,Oort,40.4375,11.5788,1228.8226,108.4505,0.5282,0.0313,9.48
+power_of_choice,Power-of-Choice,18.1375,14.4515,1257.5364,122.6649,0.5524,0.0125,9.7933
+fair,Fair (round-robin),43.4875,11.2628,1254.1307,119.0661,0.4093,0.0274,9.46
+centralized_rl,Centralized RL,47.3125,4.7213,1699.5715,132.577,0.5029,0.0198,13.3933
+full,Full Participation,32.45,17.4554,1833.7001,138.7144,0.5028,0.0164,14.25

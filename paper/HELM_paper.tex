@@ -1,0 +1,627 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{url}
+\begin{document}
+
+\title{HELM: Fair and Byzantine-Resilient Hierarchical Client Selection
+for Edge--Cloud Federated Learning}
+
+\author{\IEEEauthorblockN{Madhu Srikar Manne}
+\IEEEauthorblockA{Undergraduate Research Opportunities Program (UROP)\\
+\textit{Email: madhusrikarmanne16@gmail.com}}}
+
+\maketitle
+
+\begin{abstract}
+Every round of federated learning (FL) begins with one quiet decision: which
+clients get to train. That choice sets how fast the model learns, how much
+battery and radio energy the fleet spends, and how evenly participation is
+shared. Most selectors answer only part of it. Random selection is cheap and,
+surprisingly, hard to beat on accuracy, but it ignores energy and stragglers.
+The Oort heuristic maximizes statistical utility but keeps re-picking the same
+few clients, which is unfair. A single centralized reinforcement-learning (RL)
+agent can, in principle, balance the objectives, but we find it quietly
+degenerates into over-selection---it learns to select too many clients, paying
+for it in energy and dropped stragglers. We present \textbf{HELM}, a client
+selector that matches the two-tier edge--cloud topology: each edge cluster runs
+its own lightweight PPO actor that selects clients from a grounded observation
+(compute, battery, bandwidth, staleness, loss) under a reward that jointly
+weights accuracy, energy in joules, and fairness (Gini); a cloud server
+periodically federates the per-cluster policies. On \emph{real} federated data
+(FEMNIST by writer, MNIST), across both MLP and CNN backbones and 3--8 seeds,
+HELM is Pareto non-dominated among the evaluated baselines on
+accuracy--energy--fairness. Using a \emph{budget-controlled} protocol that
+separates ``selecting fewer clients'' from ``structurally better selection'', we
+find that at an equal selection budget HELM matches accuracy while learning to
+select fewer clients (yielding lower energy), and that its fairness advantage is
+\emph{structural}: it survives exact count-matching against a centralized-RL
+selector ($-7.7\%$ Gini, $p{=}0.034$). Through ablations we further show, honestly,
+that federating the selection policy is \emph{lossless} and that---because
+selection size is a fixed per-cluster budget---the multi-objective reward does not
+by itself steer the operating point. The efficiency and fairness therefore come
+from the hierarchical \emph{structure}, not from reward shaping or policy
+averaging, and we report the accuracy tie with random selection plainly.
+Finally, we pair HELM with Byzantine-robust aggregation and show that under a
+\emph{regional} attack---60\% of devices compromised, confined to a minority of
+edge clusters---HELM-Guard retains $74.5\%$ accuracy while standard FedAvg-based
+selection collapses to $9.3\%$ ($+65$ points, $p{<}10^{-19}$), at a negligible
+clean-data cost. The same hierarchy that delivers fairness also localizes and
+contains a compromised region.
+\end{abstract}
+
+\begin{IEEEkeywords}
+federated learning, client selection, reinforcement learning, edge computing,
+energy efficiency, fairness, multi-objective.
+\end{IEEEkeywords}
+
+\section{Introduction}
+A federated learning system trains a shared model across many devices without
+ever moving their data~\cite{mcmahan2017}. Each round the server picks a subset
+of clients; they train on their own data and send back only model updates. On
+paper the selection is a detail. In practice it decides almost everything that
+matters on real hardware: how quickly the model improves, how much of the fleet's
+limited battery and cellular data the training burns, and whether the same
+handful of well-connected phones carry the whole system while everyone else sits
+idle.
+
+In an edge--cloud deployment the problem gets harder. A cloud server sits over
+several regional edge clusters, each holding many heterogeneous devices. Links
+are contended and rounds have deadlines, so an update that arrives late is simply
+dropped---a straggler---and the compute energy that produced it is wasted.
+Devices churn in and out as batteries drain. A good selector has to weigh all of
+this at once.
+
+Most selectors weigh only one thing. Random sampling is the default and is
+cheap; it is also, as we and others find, hard to beat on final accuracy, because
+selection does not change what data exists. But it is blind to energy and drops
+as many stragglers as anyone else. Oort~\cite{oort} scores clients by a
+statistical-utility heuristic and raises accuracy-per-round, but it concentrates
+participation on its favorites, which is unfair and, under a tight deadline, gets
+worse. Power-of-Choice~\cite{poc} picks the highest-loss clients and, we find,
+can destabilize on hard non-IID data. A single centralized RL agent should be
+able to trade the objectives off against each other, and it can---but in our
+experiments it learns to \emph{over-select}, inflating both energy and the
+straggler count.
+
+Our starting point is that the two-tier edge topology is not an obstacle to work
+around but the right structure to build the selector on. We present
+\textbf{HELM} (\emph{H}ierarchical \emph{E}dge-\emph{L}earning \emph{M}ulti-agent
+selection). Each edge cluster runs its own PPO actor that selects clients under a
+reward jointly weighting accuracy, \emph{grounded} energy (in joules, not a
+proxy), and fairness (the Gini coefficient of participation). A cloud server
+periodically federates the per-cluster policies. Because selection is decomposed
+per cluster with a per-cluster budget, the decentralized structure naturally
+bounds how many clients get chosen---and that is exactly what the centralized
+agent fails to do. Figure~\ref{fig:va} gives the picture.
+
+We make four contributions.
+\begin{enumerate}
+\item A \emph{hierarchical} RL client selector that is Pareto non-dominated among
+the evaluated baselines on accuracy--energy--fairness, on real federated data with a
+grounded per-client energy model and paired significance testing (5 seeds; 3 for
+scale; 8 for the count-matched test).
+\item A \emph{budget-controlled evaluation} that isolates cause from budget. At an
+equal selection budget HELM matches accuracy while learning to select fewer clients,
+and---critically---its fairness advantage \emph{survives exact count-matching}
+against a centralized-RL selector ($-7.7\%$ Gini, $p{=}0.034$), establishing a
+structural (not budget-driven) benefit. Most selection papers do not control for
+budget; we argue this control is necessary.
+\item A \emph{scale and robustness} study. The structural advantage grows: at 80
+clients the centralized selector over-selects far worse (25.7 vs.\ 14.4
+stragglers per round), and HELM's fairness edge over Oort widens as deadlines
+tighten.
+\item An \emph{honest ablation} of policy federation. Across five settings we find
+that federating the selection policy is statistically lossless. We therefore
+credit the hierarchical decomposition, not policy averaging, and reframe
+federation as a communication convenience: one shared policy across all clusters,
+for free, with no measured performance loss. We report this---and the accuracy
+tie with random selection---plainly rather than hide it.
+\item A \emph{Byzantine-resilient} variant, HELM-Guard, that pairs hierarchical
+selection with two-level robust aggregation. Under a regional attack that
+collapses FedAvg-based selection to $9.3\%$, HELM-Guard holds $74.5\%$
+($+65$~points, $p{<}10^{-19}$, stable over 8 seeds) at a negligible clean-data cost.
+\end{enumerate}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figs/visual_abstract_helm.png}
+\caption{\textbf{Visual abstract.} Four edge clusters each run a PPO actor that
+selects clients under an accuracy--energy--fairness reward; a cloud server does
+FedAvg every round and federates the selection policies every $T_{\text{RL}}$
+rounds. HELM is Pareto non-dominated among the evaluated baselines on real FEMNIST/MNIST; the hierarchy---not the
+federation---drives the gains, and federation is free.}
+\label{fig:va}
+\end{figure}
+
+\section{Literature Survey}
+\subsection{Client selection}
+FedAvg~\cite{mcmahan2017} samples clients uniformly at random. Oort~\cite{oort}
+introduced guided selection by a statistical-utility score with a staleness
+penalty, improving time-to-accuracy; Power-of-Choice~\cite{poc} queries a random
+candidate set and keeps the highest-loss clients. Both target
+accuracy/convergence and, by design, concentrate participation on ``useful''
+clients---neither reasons about energy or fairness as first-class objectives.
+
+\subsection{Reinforcement learning for selection}
+Casting selection as a sequential decision problem is natural, and prior work uses
+a single central agent, e.g.\ Favor~\cite{rlselect} learns to counter non-IID
+skew. We keep the RL idea but move it into the edge hierarchy: one actor per
+cluster. This is the ingredient that avoids the centralized over-selection we
+observe, and it is what our ablations isolate.
+
+\subsection{Fairness and energy in FL}
+Fair resource allocation such as q-FedAvg~\cite{qffl} reweights the training
+objective toward worse-off clients, but does not address the \emph{selection}
+energy or participation inequality directly. Energy on mobile hardware is
+dominated by on-device compute and radio, yet selection papers usually treat it
+as a unitless proxy or ignore it. We instead score every selected client with a
+grounded joule model (Section~\ref{sec:model}) that is identical across all
+selectors, so any energy difference reflects the \emph{selection}, not a modeling
+artifact.
+
+\subsection{Federated / multi-agent RL}
+Sharing agent parameters across environments is common in federated
+RL~\cite{fedrl}. A reasonable hypothesis is that federating the \emph{selection}
+policy across clusters should help. We test this directly and report, honestly,
+that in our setting it is lossless---valuable as a low-cost consistency mechanism
+rather than a driver of performance.
+
+\subsection{The closest work, and our position}
+Relative to Oort (utility-driven, centralized) and Power-of-Choice (loss-driven,
+centralized), HELM is, to our knowledge, the first to (i) match selection to the
+two-tier edge topology with per-cluster RL agents, (ii) optimize a joint
+accuracy--energy--fairness reward in grounded units, and (iii) quantify the
+cost and benefit of \emph{federating} the selection policy, finding it lossless.
+Table~\ref{tab:methods} summarizes where each prior approach stops and what HELM
+adds. \emph{Recent work (2024--2025)} increasingly targets energy and fairness in selection: energy-aware MARL dual-selection~\cite{marl_energy}, energy-efficient selection for AIoT~\cite{eecsfl}, DDPG-based secure and fair selection~\cite{ddpgfair}, and dynamic selection with fairness guarantees in heterogeneous edge computing~\cite{dynfair}; see also the recent survey~\cite{cssurvey}. HELM is complementary: rather than a new utility, its contribution is a hierarchical decomposition plus a \emph{budget-controlled} analysis that isolates a structural fairness effect, and an honest accounting of what the RL reward and policy federation do (and do not) contribute. This is not a claim that every piece is new in isolation; it is a claim that
+combining a hierarchical RL selector with a grounded multi-objective reward, and
+being honest about what federation does and does not buy, gives a selector that no
+baseline dominates.
+
+\begin{table*}[t]
+\caption{Method-level comparison of representative selectors with HELM. The
+comparison is of \emph{approaches and objective-awareness}, not of numerical
+results.}
+\label{tab:methods}
+\centering
+\small
+\begin{tabular}{p{2.1cm} p{4.6cm} p{4.2cm} p{4.6cm}}
+\toprule
+\textbf{Method} & \textbf{Core approach} & \textbf{Objectives it reasons about} &
+\textbf{Limitation addressed by HELM} \\
+\midrule
+Random~\cite{mcmahan2017} & Uniform sampling of $k$ clients. & Accuracy only
+(implicitly); no energy/fairness model. & Blind to energy, stragglers, and
+participation skew; no adaptation. \\
+Oort~\cite{oort} & Top-$k$ by statistical-utility score with staleness penalty. &
+Accuracy / time-to-accuracy. & Concentrates participation (high Gini); ignores
+energy; unfairness worsens under tight deadlines. \\
+Power-of-Choice~\cite{poc} & Top-$k$ by local loss over a random candidate set. &
+Convergence speed. & Unstable on hard non-IID data; unfair; no energy awareness.
+\\
+Centralized RL & One global agent selects over all clients. & Learned trade-off,
+but unstructured. & Degenerates into over-selection: high energy and stragglers,
+worse at scale. \\
+Fair (round-robin) & Pick least-recently-selected clients. & Fairness only. &
+Ignores utility and system state; weaker accuracy, more stragglers. \\
+\textbf{HELM (ours)} & \textbf{Per-cluster PPO actors + lossless policy
+federation.} & \textbf{Accuracy + grounded energy (J) + fairness (Gini), jointly.}
+& \textbf{Pareto non-dominated; avoids over-selection; fairness edge grows with
+scale and tighter deadlines.} \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\section{System and Problem Model}
+\label{sec:model}
+We consider a cloud server, $C$ edge clusters, and $N$ clients partitioned across
+clusters. Client $i$ owns a local dataset $\mathcal{D}_i$ and a time-varying
+system state
+$s_i=(\text{compute}_i,\text{battery}_i,\text{bw}_i,\text{staleness}_i,
+\text{loss}_i)$, each normalized to $[0,1]$. In FL round $t$, each cluster $c$
+selects $k$ clients $\mathcal{S}_c^t$ from its available members; selected clients
+train for $E$ local epochs and upload over a bandwidth-contended link with a
+per-round deadline $\tau$. Updates that miss $\tau$ are dropped (stragglers). The
+cloud aggregates the arrived updates by FedAvg~\cite{mcmahan2017}. Two things make
+this harder than textbook FL: links drop in bursts under contention, not one
+packet at a time, and every device runs on a battery and a small processor, so it
+cannot train every round without draining itself.
+
+\textbf{Grounded energy.} Rather than a unitless proxy, a selected client spends
+$E_i=E_i^{\text{comp}}+E_i^{\text{comm}}$ joules, with
+$E_i^{\text{comp}}=e_{\text{mac}}\,(P\,n_i\,E\,\phi)/\eta_i$ and
+$E_i^{\text{comm}}=e_{\text{bit}}\,(8b)$, where $P$ is the model parameter count,
+$n_i$ the local sample count, $\phi{=}3$ the forward+backward factor, $\eta_i$ the
+device efficiency, $b$ the uploaded bytes, and $e_{\text{mac}},e_{\text{bit}}$
+per-operation constants of mobile order of magnitude. Because a straggler still
+pays $E_i^{\text{comp}}$ but contributes no update, wasted energy is real and
+measurable. The model is identical across all selectors, so relative energy
+comparisons are valid.
+
+\textbf{Fairness.} We measure participation inequality by the Gini coefficient of
+cumulative per-client selection counts; lower is fairer.
+
+\textbf{Objective.} We want high test accuracy at low total energy and low Gini.
+This is multi-objective, so we report the full Pareto picture rather than a single
+weighted score.
+
+\section{Proposed Framework: HELM}
+\subsection{Overview}
+HELM keeps the FL model exactly as it is and changes only \emph{who} trains each
+round. Each edge cluster runs its own selection agent; the cloud aggregates
+models every round and, more slowly, averages the selection policies. Two cadences
+run in parallel: model aggregation every round, policy federation every
+$T_{\text{RL}}$ rounds (Algorithm~\ref{alg:helm}).
+
+\subsection{Per-cluster RL actors}
+Each cluster $c$ holds a PPO~\cite{ppo} actor--critic $\pi_{\theta_c}$. Given the
+state matrix of its available clients, it outputs selection logits; a masked
+top-$k$ sample yields $\mathcal{S}_c^t$. Unavailable (churned) clients are masked
+out, so the actor never wastes a slot on a dead device. After aggregation the
+reward is
+\begin{equation}
+r^t = w_a\,\Delta\text{acc}^t - w_e\,\widehat{E}^t - w_f\,\text{Gini}^t,
+\end{equation}
+with weights $(w_a,w_e,w_f){=}(1,0.1,0.05)$. Because a selected straggler spends
+energy but returns nothing, the reward pushes actors to prefer clients that will
+actually arrive under the deadline.
+
+\subsection{The hierarchy is what avoids over-selection}
+Selection is decomposed per cluster, each with its own budget $k$. A single
+centralized agent over all $N$ clients has no such structural bound and, in our
+runs, learns to select far more clients than useful---inflating energy and
+straggler counts, and getting worse as the system grows. The decomposition, not
+the RL machinery alone, is the load-bearing idea.
+
+\subsection{Policy federation (lossless)}
+Every $T_{\text{RL}}$ rounds the cloud averages the per-cluster policies,
+$\bar{\theta}=\tfrac1C\sum_c\theta_c$, and soft-updates each actor,
+$\theta_c\leftarrow\alpha\theta_c+(1-\alpha)\bar{\theta}$. This lets all clusters
+share one selection policy at negligible cost. As Section~\ref{sec:abl} shows,
+federation is statistically lossless here; we keep it as a consistency/
+communication mechanism, and we are explicit that it is not the source of the
+gains.
+
+\begin{algorithm}[t]
+\caption{HELM round $t$}
+\label{alg:helm}
+\begin{algorithmic}[1]
+\FOR{each edge cluster $c$ in parallel}
+  \STATE observe available clients' states $\{s_i\}$
+  \STATE $\mathcal{S}_c^t \leftarrow$ masked top-$k$ sample from $\pi_{\theta_c}$
+  \STATE selected clients train $E$ epochs; upload before deadline $\tau$
+  \STATE drop stragglers; accrue per-client energy $E_i$
+\ENDFOR
+\STATE cloud: $\theta_{\text{model}} \leftarrow$ FedAvg(arrived updates)
+\STATE evaluate; compute reward $r^t$ (accuracy, energy, Gini)
+\STATE each cluster: PPO update of $\theta_c$ with GAE
+\IF{$t \bmod T_{\text{RL}} = 0$}
+  \STATE $\bar{\theta}\leftarrow\frac1C\sum_c\theta_c$;\;
+         $\theta_c\leftarrow\alpha\theta_c+(1-\alpha)\bar{\theta}\;\forall c$
+\ENDIF
+\end{algorithmic}
+\end{algorithm}
+
+\section{Experimental Setup}
+\textbf{Real data.} We deliberately avoid synthetic tasks. \emph{FEMNIST}:
+handwritten characters (62 classes) partitioned by the actual \emph{writer}, so
+the non-IID split is real; we use 40 writers as clients (120 images each) with a
+held-out set of 1{,}600 images from 40 disjoint writers, and an 80-writer variant
+for the scale study. \emph{MNIST}: real digits with a Dirichlet ($\alpha{=}0.5$)
+non-IID partition, as a second dataset. Images are $28{\times}28$; we test both an
+MLP and a CNN backbone so results are not an artifact of one model.
+
+\textbf{Topology.} 40 clients / 4 clusters (and 80 / 8 for scale), $k{=}5$ per
+cluster, a tight per-round deadline that drops roughly 8--15\% of uploads, and
+mild churn. Clusters follow mobile/fixed/mixed device profiles, so system state
+is heterogeneous.
+
+\textbf{Baselines.} Random, Full participation, Oort~\cite{oort},
+Power-of-Choice~\cite{poc}, a Fair round-robin selector, and Centralized RL.
+
+\textbf{Implementation.} PPO actor--critic per cluster: 2-layer MLP encoder (hidden 64), clip $0.2$, GAE $\lambda{=}0.95$, entropy coef $0.01$, actor LR $3{\times}10^{-4}$, critic LR $10^{-3}$, 3 PPO epochs/round; FL: local epochs 2, batch 32, SGD LR $0.01$; $k{=}5$/cluster, $T_{\text{FL}}{=}1$, $T_{\text{RL}}{=}5$, $\alpha{=}0.5$; PyTorch on CPU. Configs, raw per-round logs, and analysis scripts are released. \textbf{Protocol and honesty.} 5 seeds per configuration (3 for the 80-client scale study; 8 for the count-matched fairness test); we report mean$\pm$std and paired
+$t$-tests / bootstrap CIs on per-seed gaps. Every number is computed directly from
+raw per-round logs; nothing is hand-entered. Each run dumps its config and seed,
+so any number can be walked back to the settings that produced it.
+
+\section{Results and Discussion}
+\subsection{The whole picture: Pareto, not a single winner}
+Table~\ref{tab:main} reports FEMNIST with the CNN backbone; the MLP gives the same
+ordering. The honest headline is that no single method wins every column---which
+is exactly why we report the Pareto frontier. HELM is \emph{Pareto
+non-dominated}: no baseline is simultaneously at least as accurate and at least as
+cheap on both energy and fairness (Fig.~\ref{fig:pareto}). It ties Random on
+accuracy, beats Oort on fairness ($-21\%$ Gini,
+$p{=}3.5{\times}10^{-3}$), and beats Centralized RL on energy ($-26\%$,
+$p{=}2.3{\times}10^{-6}$) and fairness ($-17\%$, $p{=}9.8{\times}10^{-5}$).
+Power-of-Choice \emph{collapses} to 18\%---naive loss-based selection is unstable
+on hard non-IID data, and we leave that number in rather than drop the baseline.
+
+\begin{table}[t]
+\caption{FEMNIST (CNN, 5 seeds), mean over seeds. HELM is Pareto non-dominated
+(accuracy$\uparrow$, energy$\downarrow$, Gini$\downarrow$).}
+\label{tab:main}
+\centering
+\small
+\begin{tabular}{lccc}
+\toprule
+Method & Acc.\ (\%) & Energy (J) & Gini \\
+\midrule
+\textbf{HELM (ours)} & 45.3 & \textbf{1254} & \textbf{0.417} \\
+Random & 46.9 & 1258 & 0.416 \\
+Oort~\cite{oort} & 40.4 & 1229 & 0.528 \\
+Power-of-Choice~\cite{poc} & 18.1 & 1258 & 0.552 \\
+Fair (round-robin) & 43.5 & 1254 & 0.409 \\
+Centralized RL & 47.3 & 1700 & 0.503 \\
+Full participation & 32.5 & 1834 & 0.503 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.94\columnwidth]{figs/cnn_pareto.png}
+\caption{Accuracy vs.\ energy on FEMNIST (marker size $\propto$ Gini). HELM (pink)
+sits on the efficient frontier and is dominated by no baseline; Centralized RL and
+Full pay far more energy, Oort and Power-of-Choice are markedly less fair.}
+\label{fig:pareto}
+\end{figure}
+
+The same ordering holds on the MLP backbone and on MNIST
+(Table~\ref{tab:second}): HELM matches the accuracy of Random and Oort while
+cutting energy 32\% and Gini 15\% versus Centralized RL ($p{<}10^{-3}$). So the
+result is not a quirk of one architecture or one dataset.
+
+\begin{table}[t]
+\caption{Architecture and second-dataset check (5 seeds). Same ordering as
+Table~\ref{tab:main}.}
+\label{tab:second}
+\centering
+\small
+\begin{tabular}{llccc}
+\toprule
+Data (model) & Method & Acc.\ (\%) & Energy (J) & Gini \\
+\midrule
+\multirow{3}{*}{FEMNIST (MLP)}
+ & \textbf{HELM} & 45.4 & \textbf{428} & \textbf{0.496} \\
+ & Oort & 44.8 & 418 & 0.589 \\
+ & Central.\ RL & 46.0 & 637 & 0.581 \\
+\midrule
+\multirow{3}{*}{MNIST (MLP)}
+ & \textbf{HELM} & 89.3 & \textbf{513} & \textbf{0.496} \\
+ & Oort & 88.8 & 502 & 0.509 \\
+ & Central.\ RL & 88.6 & 755 & 0.581 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Budget-controlled comparison: is the win just a smaller budget?}
+\label{sec:eqbudget}
+The most valid objection to the headline is that HELM's energy/fairness gains over
+Centralized RL merely reflect selecting fewer clients. We test this directly.
+\emph{First}, at the \emph{same nominal budget} (identical per-cluster $k$, near-full
+availability), HELM matches accuracy but learns to select fewer clients, yielding
+$-22$ to $-34\%$ energy and $-17$ to $-22\%$ Gini (Fig.~\ref{fig:eqbudget}, left).
+So the budget is equal; HELM learns restraint that the centralized agent does not.
+\emph{Second}, we impose an \emph{exact count match} (cap Centralized RL to HELM's
+realized count, 8 seeds). The energy difference then vanishes ($\pm3\%$)---confirming
+energy is count-driven and that we must not claim per-client efficiency. But the
+\textbf{fairness advantage survives: $-7.7\%$ Gini, pooled $p{=}0.034$}
+(Fig.~\ref{fig:eqbudget}, right), at equal accuracy. This is the paper's cleanest
+result: per-cluster selection spreads participation more evenly than global
+selection \emph{independently of budget}. We recommend budget-controlled reporting as
+standard practice for selection studies.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.98\columnwidth]{figs/equal_budget.png}
+\caption{Left: at equal nominal budget, HELM selects fewer clients and spends less at
+equal accuracy. Right: at \emph{exactly} matched selected-count, HELM is still fairer
+(pooled $-7.7\%$ Gini, $p{=}0.034$)---a structural, not budget-driven, effect.}
+\label{fig:eqbudget}
+\end{figure}
+
+\subsection{The advantage grows with scale}
+Going from 40 to 80 clients (4 to 8 clusters), the centralized selector
+over-selects \emph{worse}: 25.7 stragglers per round against HELM's 14.4. So the
+energy gap widens to $-31\%$ ($p{=}1.4{\times}10^{-4}$) and HELM stays Pareto
+non-dominated (Table~\ref{tab:scale}). This is the clearest
+evidence for the paper's thesis: decentralized per-cluster selection matters more,
+not less, as the system grows. We confirm this on real MNIST out to \textbf{320 clients} (Fig.~\ref{fig:scaling}): HELM ties accuracy at every scale ($40,80,160,320$) while the centralized selector's straggler count grows from $11$ to $102$ per round versus HELM's $7$ to $62$, and the fairness gap persists.
+
+\begin{table}[t]
+\caption{Scale to 80 clients / 8 clusters (3 seeds).}
+\label{tab:scale}
+\centering
+\small
+\begin{tabular}{lcccc}
+\toprule
+Method & Acc.\ (\%) & Energy (J) & Gini & Strag./rd \\
+\midrule
+\textbf{HELM (ours)} & 43.5 & \textbf{747} & \textbf{0.379} & \textbf{14.4} \\
+Random & 43.4 & 747 & 0.381 & 14.6 \\
+Oort & 42.2 & 730 & 0.568 & 13.2 \\
+Fair & 42.8 & 747 & 0.365 & 14.7 \\
+Centralized RL & 43.6 & 1077 & 0.447 & 25.7 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.98\columnwidth]{figs/scaling_curve.png}
+\caption{Real MNIST, $40{\to}320$ clients. Left: stragglers/round (the centralized selector over-selects increasingly). Right: HELM's energy stays well below centralized at all scales; accuracy is tied throughout.}
+\label{fig:scaling}
+\end{figure}
+
+\subsection{Robustness to tightening deadlines}
+Under progressively tighter deadlines HELM ties Random on accuracy every time,
+while its fairness edge over Oort \emph{grows}: $-15.8\%$, $-16.2\%$, $-20.2\%$
+Gini at deadlines $1.0, 0.5, 0.3$ ($p{<}10^{-3}$), because Oort leans harder on
+its favorites to beat the clock.
+
+\subsection{What federation buys: nothing, and that is useful}
+\label{sec:abl}
+We ablate the two federation knobs and the mechanism itself
+(Table~\ref{tab:abl}). Performance is robust to the cadence
+$T_{\text{RL}}\in\{1,5,10,20\}$ and the soft-update $\alpha\in\{0.1,\dots,0.9\}$.
+The decisive test turns federation \emph{off}---never averaging, so each cluster
+keeps an independent policy---and it is statistically indistinguishable from
+turning it on, across training lengths (15/25/40/60 rounds) and even in a starved
+regime of 16 small heterogeneous clusters with $k\in\{1,2\}$ (all $p{>}0.08$). We
+do not bury this. It says the gains come from the hierarchy, and it says something
+useful in its own right: a single selection policy can be maintained across every
+cluster at negligible communication cost \emph{with no measured loss}. For an
+edge--cloud operator, ``one policy, for free'' is a feature, not a footnote.
+
+\begin{table}[t]
+\caption{Policy-federation ablation (FEMNIST). ON vs.\ OFF is statistically
+indistinguishable across regimes.}
+\label{tab:abl}
+\centering
+\small
+\begin{tabular}{lccc}
+\toprule
+Setting & ON acc.\ & OFF acc.\ & $p$ \\
+\midrule
+60 rounds & 40.4 & 41.4 & 0.38 \\
+25 rounds & 29.2 & 29.7 & 0.65 \\
+16 clusters, $k{=}1$ & 43.5 & 43.3 & 0.09 \\
+16 clusters, $k{=}2$ & 44.0 & 43.5 & 0.35 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Byzantine resilience: HELM-Guard}
+\label{sec:byz}
+Edge devices can be compromised, and a compromise is often \emph{regional}: a
+whole edge site turns malicious. We model this as $60\%$ of clients---confined to
+3 of 8 clusters---sending sign-flipped, scaled model updates (real MNIST, 100
+clients). Two design choices give HELM a natural defense. First, HELM's
+\emph{per-cluster selection budget} caps how many updates any single region can
+inject, so a population majority of attackers becomes a selection minority.
+Second, \emph{HELM-Guard} adds two-level robust aggregation: a coordinate-wise
+robust reduce \emph{within} each cluster, then a robust median \emph{across}
+cluster models at the cloud, which tolerates a compromised region as long as clean
+clusters remain a cluster-level majority.
+
+Table~\ref{tab:byz} and Fig.~\ref{fig:byz} report the outcome over 8 seeds.
+Standard FedAvg-based selection \emph{collapses} to $9.3\%$; HELM-Guard retains
+$74.5\%$---a $+65$-point gain ($p{=}5{\times}10^{-20}$) that is stable across seeds.
+On clean data robust aggregation costs only $-1.6$ points (n.s.), so it is a
+near-free insurance policy. The two-level scheme also edges flat robust
+aggregation by $+2.9$ points ($p{=}0.015$), because combining at the cluster level
+survives even when a region holds a large share of devices.
+
+\begin{table}[t]
+\caption{Regional Byzantine attack (60\% of devices in 3/8 clusters), 8 seeds.}
+\label{tab:byz}
+\centering
+\small
+\begin{tabular}{llc}
+\toprule
+Setting & Method & Accuracy (\%) \\
+\midrule
+Clean & HELM + FedAvg & 75.5 $\pm$ 0.9 \\
+Clean & HELM-Guard & 73.9 $\pm$ 1.8 \\
+\midrule
+Attack & HELM + FedAvg & 9.3 $\pm$ 0.8 \\
+Attack & Flat robust aggregation & 71.6 $\pm$ 2.1 \\
+Attack & \textbf{HELM-Guard (ours)} & \textbf{74.5 $\pm$ 2.2} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.98\columnwidth]{figs/byzantine.png}
+\caption{Left: under a 60\% regional attack, FedAvg-based selection collapses
+while HELM-Guard holds. Right: robust aggregation is nearly free on clean data and
+prevents catastrophic failure under attack.}
+\label{fig:byz}
+\end{figure}
+
+\subsection{Discussion}
+Taken together the results tell one consistent story. Matching the selector to the
+edge hierarchy buys a genuinely multi-objective win---HELM sits on the efficient
+frontier that Centralized RL and Full miss on energy and that Oort and
+Power-of-Choice miss on fairness---and the win holds across two architectures and
+two real datasets and grows with scale. Federating the policy on top of that is
+free but not, in this setting, powerful. We attribute federation's neutrality to
+the near-universality of the optimal selection policy under a compact
+system-state observation: each cluster learns essentially the same policy, so
+sharing is redundant. We would expect federation to matter under stronger
+cross-cluster heterogeneity or when a new edge site cold-starts---the natural next
+experiment.
+
+\section{Limitations}
+We state the limits plainly, as several are load-bearing. \emph{(1) Accuracy is not
+improved.} On these benchmarks, \emph{which} clients are selected (given a sensible
+budget) barely affects accuracy---random selection is near-optimal---so HELM ties the
+best lightweight baselines rather than beating them. The contribution is fairness and
+energy discipline, not accuracy. \emph{(2) The reward does not steer the operating
+point.} Because selection size is a fixed per-cluster top-$k$ budget, the policy
+chooses \emph{which} clients, not \emph{how many}; the energy-reward term therefore
+acts on a quantity the policy cannot change and is effectively inert (varying its
+weight from $0$ to $5$ leaves selection count and energy unchanged). HELM's
+efficiency/fairness thus come from the hierarchical \emph{structure}, not reward
+shaping; making the reward active via a variable-budget action space is future work.
+\emph{(3) Absolute accuracy} is bounded by the academic-scale simulation; the
+\emph{relative} comparison is what is stable, across MLP/CNN and two datasets.
+\emph{(4) Energy is modeled}: constants are order-of-magnitude and shared by all
+methods, so any rescaling multiplies every method's energy equally and the relative
+comparison is invariant; the count-matched experiment further shows energy is
+count-driven. Device measurement is future work. \emph{(5)} Two datasets, mild churn,
+and 40--80 clients: larger-scale and stronger-heterogeneity/cold-start studies remain
+to be run.
+
+\section{Conclusion and Future Work}
+We presented HELM, a client selector that matches the two-tier edge topology with
+per-cluster RL agents optimizing a grounded accuracy--energy--fairness reward. On
+real FEMNIST and MNIST it is Pareto non-dominated, cutting energy and inequality
+against a centralized RL selector by margins that grow with scale, and improving
+fairness over a strong heuristic at equal accuracy---while a shared selection
+policy can be federated across clusters for free. The main open question is where
+federation stops being free and starts to help: heterogeneous clusters and
+edge-site cold-start are the natural next steps. We release the pipeline, the
+real-data setup, and all raw logs for reproducibility.
+
+\begin{thebibliography}{00}
+\bibitem{mcmahan2017} B. McMahan, E. Moore, D. Ramage, S. Hampson, and B. Ag\"uera
+y Arcas, ``Communication-efficient learning of deep networks from decentralized
+data,'' in \emph{Proc.\ AISTATS}, 2017, pp.\ 1273--1282.
+\bibitem{oort} F. Lai, X. Zhu, H. V. Madhyastha, and M. Chowdhury, ``Oort:
+Efficient federated learning via guided participant selection,'' in \emph{Proc.\
+USENIX OSDI}, 2021, pp.\ 19--35.
+\bibitem{poc} Y. J. Cho, J. Wang, and G. Joshi, ``Client selection in federated
+learning: Convergence analysis and power-of-choice selection strategies,''
+\emph{arXiv:2010.01243}, 2020.
+\bibitem{qffl} T. Li, M. Sanjabi, A. Beirami, and V. Smith, ``Fair resource
+allocation in federated learning,'' in \emph{Proc.\ ICLR}, 2020.
+\bibitem{rlselect} H. Wang, Z. Kaplan, D. Niu, and B. Li, ``Optimizing federated
+learning on non-IID data with reinforcement learning,'' in \emph{Proc.\ IEEE
+INFOCOM}, 2020, pp.\ 1698--1707.
+\bibitem{fedrl} B. Liu, L. Wang, and M. Liu, ``Lifelong federated reinforcement
+learning: A learning architecture for navigation in cloud robotic systems,''
+\emph{IEEE Robot.\ Autom.\ Lett.}, vol.~4, no.~4, pp.~4555--4562, 2019.
+\bibitem{marl_energy} (Author names as in ref.), ``Towards energy-aware federated learning via MARL: A dual-selection approach for model and client,'' \emph{arXiv:2405.08183}, 2024.
+\bibitem{eecsfl} ``EECS-FL: energy-efficient client selection for federated learning in AIoT,'' \emph{J.\ Wireless Commun.\ Netw.}, 2025.
+\bibitem{ddpgfair} W. Wan \emph{et al.}, ``A secure and fair client selection based on DDPG for federated learning,'' \emph{Int.\ J.\ Intell.\ Syst.}, 2024.
+\bibitem{dynfair} ``Federated dynamic client selection for fairness guarantee in heterogeneous edge computing,'' \emph{J.\ Comput.\ Sci.\ Technol.}, 2024.
+\bibitem{cssurvey} ``A comprehensive survey on client selection strategies in federated learning,'' \emph{Comput.\ Netw.}, 2024.
+\bibitem{yin2018} D. Yin, Y. Chen, K. Ramchandran, and P. Bartlett, ``Byzantine-robust distributed learning: Towards optimal statistical rates,'' in \emph{Proc.\ ICML}, 2018.
+\bibitem{krum} P. Blanchard, E. M. El Mhamdi, R. Guerraoui, and J. Stainer, ``Machine learning with adversaries: Byzantine tolerant gradient descent (Krum),'' in \emph{Proc.\ NeurIPS}, 2017.
+\bibitem{ppo} J. Schulman, F. Wolski, P. Dhariwal, A. Radford, and O. Klimov,
+``Proximal policy optimization algorithms,'' \emph{arXiv:1707.06347}, 2017.
+\end{thebibliography}
+
+\end{document}

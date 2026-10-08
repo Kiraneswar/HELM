@@ -1,0 +1,68 @@
+# configs/ablations/alpha_sweep.yaml
+# ------------------------------------
+# ABLATION: Soft-update alpha sweep for RL policy federation.
+# Tests alpha in {0.0, 0.3, 0.5, 0.7, 1.0} for federated_marl.
+# alpha=0.0 = hard replace; alpha=1.0 = no federation at all.
+# Run as: python run_experiment.py --config configs/ablations/alpha_sweep.yaml
+
+seed: 42
+num_seeds: 3
+num_clients: 20
+num_clusters: 3
+clients_per_cluster: [7, 7, 6]
+num_classes: 10
+num_features: 20
+num_rounds: 50
+T_FL: 1
+T_RL: 5
+methods:
+  - federated_marl
+
+# Override: run multiple alpha values
+# (runner.py reads federation.alpha; use run_experiment.py --alpha-sweep)
+federation:
+  alpha: 0.5
+  mode: soft
+
+rl:
+  k_select: 5
+  lr_actor: 3.0e-4
+  lr_critic: 1.0e-3
+  ppo_epochs: 3
+  clip_eps: 0.2
+  entropy_coef: 0.01
+  update_every_n_rounds: 5    # held fixed across all alpha values
+  reward_weights:
+    accuracy: 1.0
+    energy: 0.1
+    fairness: 0.05
+
+fl:
+  local_epochs: 2
+  batch_size: 32
+  lr: 0.01
+  hidden1: 128
+  hidden2: 64
+
+data:
+  dirichlet_alpha: 0.5
+  num_samples_per_client: 200
+
+churn:
+  mode: mild
+  dropout_prob: 0.1
+  battery_drain_per_round: 0.05
+
+network:
+  round_deadline: 1.0        # tightened so ~8-15% of uploads straggle (L5: network now filters aggregation)
+
+logging:
+  save_csv: true
+  save_plots: true
+  results_dir: results/ablations/alpha/
+  verbose: false
+
+# Ablation sweep values (used by run_experiment.py --alpha-sweep flag)
+ablation:
+  parameter: federation.alpha
+  values: [0.0, 0.3, 0.5, 0.7, 1.0]

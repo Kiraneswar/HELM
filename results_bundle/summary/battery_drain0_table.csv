@@ -1,0 +1,6 @@
+method,label,n_seeds,n_rounds,final_acc,total_energy,final_gini
+random,Random,1,100,0.66312,14.71,0.1243
+full,Full Participation,1,100,0.65,17.13,0.20973
+oort,Oort (Heuristic),1,100,0.67062,14.58,0.2532
+centralized_rl,Centralized RL,1,100,0.6825,14.06,0.14882
+federated_marl,Federated MARL (Ours),1,100,0.66938,14.74,0.1284

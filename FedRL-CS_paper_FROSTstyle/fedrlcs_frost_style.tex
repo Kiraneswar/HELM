@@ -1,0 +1,542 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{url}
+
+\begin{document}
+
+\title{FedRL-CS: Federated Multi-Agent Reinforcement Learning for\\
+Energy- and Fairness-Aware Client Selection in Edge--Cloud Networks}
+
+\author{
+\IEEEauthorblockN{Author 1, Author 2, Author 3}
+\IEEEauthorblockA{Department of Computer Science and Engineering\\
+SRM University AP, Andhra Pradesh, India\\
+Email: \{author1, author2, author3\}@srmap.edu.in}
+}
+
+\maketitle
+
+\begin{abstract}
+Almost every account of federated learning rests on one quiet decision that is
+rarely examined: which devices actually train in a given round. A round cannot
+use everyone. Every device that participates spends battery, burns mobile data,
+and gives up compute, and in a real fleet the phones and sensors drop in and out
+without warning. So a server has to pick a small subset each round, and that
+choice quietly sets how accurate, how expensive, and how fair the whole system
+turns out to be. Recent work hands this choice to a reinforcement-learning agent,
+but almost always a single central one that watches the entire fleet. Real
+deployments are not flat: devices sit under edge servers that sit under a cloud.
+We take that structure seriously and put one selection agent on each edge
+cluster. Our addition is to let those agents share what they have learned:
+standard federated learning already shares the \emph{model}, and we also federate
+the selection \emph{policy} across clusters, on a schedule that is decoupled from
+model aggregation and with a tunable blend that runs from fully-local to
+fully-shared. On a controlled simulation of $40$ clients in $4$ clusters, over
+$100$ rounds and $20$ seeds, the federated selector matches a single centralized
+RL agent on accuracy while using $28\%$ less device energy and cutting
+participation inequality (Gini) by $15\%$; a paired test puts both gaps at
+$p<10^{-18}$. A reward-weight ablation shows this is not the reward talking: the
+advantage survives even when the energy and fairness reward terms are switched
+off, so it comes from the structure of the selection itself. Swapping the
+independent critics for a shared, centralized one lifts accuracy a further
+$0.83$ points, the energy saving holds at $200$ clients, and the shared policy
+tolerates differential-privacy noise with no measurable cost. We are careful to
+report where the method does not win---on an easy task it only ties random
+selection, and the accuracy edge appears only when selection is genuinely
+hard---and the whole study runs on synthetic data, which is the first thing we
+would change next.
+\end{abstract}
+
+\begin{IEEEkeywords}
+federated learning, client selection, multi-agent reinforcement learning, edge
+computing, energy efficiency, fairness, proximal policy optimization.
+\end{IEEEkeywords}
+
+\begin{figure*}[t]
+\centering
+\fbox{\parbox[c][3.0cm][c]{0.95\textwidth}{\centering \color{gray}\itshape
+[\,Visual abstract to be inserted here\,]\\[4pt]
+\normalfont\footnotesize (placeholder --- final graphic to be generated separately)}}
+\caption{Visual abstract. Each edge cluster runs a reinforcement-learning agent
+that selects which of its devices train in a round; the cloud both aggregates the
+model and, separately, federates the selection policy across clusters. The result
+is the same accuracy as a single centralized agent at lower energy and higher
+fairness.}
+\label{fig:abstract}
+\end{figure*}
+
+\section{Introduction}
+A federated learning (FL) system trains a shared model by sending it out to
+devices, letting each device improve it on its own data, and folding the returned
+updates back together, so the raw data never leaves the device~\cite{mcmahan2017,
+kairouz2021}. The part that gets little attention is that a round cannot include
+everyone. A production fleet has thousands or millions of devices, and each one
+that joins a round pays a real price: it drains its battery, it uses the user's
+data plan, and it ties up its processor. On top of that the fleet is unreliable
+---a phone goes into a tunnel, an app is closed, a battery dies mid-upload. So the
+server picks a handful of devices each round, and that pick is not a detail. It
+decides how quickly the model learns, how much energy the fleet spends, and
+whether the same few strong devices carry the load while the weak ones are never
+heard from~\cite{nishio2019,lai2021}.
+
+There is no obvious rule for the pick. Always taking the newest, best-connected
+phones is fast, but it bends the model toward those users and quietly exhausts
+their hardware. Taking devices at random is fair but wastes rounds on ones that
+drop out. Taking everybody gives the best data coverage at the worst energy cost.
+Because the trade-off shifts with the data and never settles, it is the kind of
+decision one can hand to a learning agent, and several groups have~\cite{wang2020}.
+What they usually build, though, is a single central agent that watches the whole
+fleet at once. That is not how the systems are laid out. Devices attach to edge
+servers---base stations, regional gateways, a hospital's local machine---and the
+edge servers attach to a cloud. The natural fit is one selection agent per edge
+cluster, not one for everything.
+
+The question we set out to answer is whether those per-cluster agents should learn
+alone or together. An ordinary FL system already shares one thing between the
+clusters: the model, through aggregation. What it does not share is the selection
+strategy---each cluster's agent works it out in isolation. Our idea is to share
+that too. Every so often the clusters send their selection policies up to the
+cloud, the cloud averages them, and each cluster blends the shared version back
+into its own. A lesson one cluster learns---say, to skip devices below a fifth of
+their battery---then spreads to the rest, and no cluster has to show anyone its
+device data to make that happen. Two design choices make this more than a slogan.
+The first is that the policy is shared on its own cadence $T_{RL}$, unhooked from
+how often the model is aggregated; the second is a single blend coefficient
+$\alpha$ that turns the sharing from off to full.
+
+Our contributions are the following.
+\begin{enumerate}
+\item We pose hierarchical client selection as a cooperative multi-agent RL
+problem and add \emph{policy federation} with a decoupled cadence $T_{RL}$ and a
+tunable blend $\alpha$ (Section~\ref{sec:method}).
+\item On a fixed simulation with an enforced straggler model and a grounded
+energy model in joules, and averaged over $20$ seeds, we show the federated
+selector matches a centralized RL agent on accuracy while cutting energy by
+$28\%$ and participation inequality by $15\%$, both at $p<10^{-18}$
+(Section~\ref{sec:results}).
+\item We show, through a reward-weight ablation, that the saving is structural
+rather than rewarded-for: it holds when the energy and fairness reward terms are
+zero.
+\item We add a centralized critic, optional differential-privacy noise on the
+shared policy, and a personalized variant, and report plainly where each helps
+and where it does not.
+\item We keep the negative results in view and release all code, configurations,
+and per-seed logs.
+\end{enumerate}
+
+\section{Literature Survey}
+\subsection{Federated Learning and the Selection Bottleneck}
+The line of work starts with McMahan \emph{et al.}~\cite{mcmahan2017}, who showed
+a fleet of devices can jointly fit one model by training locally and averaging the
+results, with the raw data never pooled. Later surveys map out what stays hard:
+statistical heterogeneity, systems constraints, and privacy~\cite{kairouz2021,
+konecny2016}. The heterogeneity is usually reproduced with a Dirichlet label
+partition~\cite{hsu2019}, which we use. None of this settles which devices to use
+each round, and at fleet scale that is where much of the cost lives.
+
+\subsection{Heuristic Client Selection}
+FedCS picks as many clients as can finish inside a deadline~\cite{nishio2019};
+Oort ranks clients by a utility that mixes how useful their data looks with how
+fast their hardware is~\cite{lai2021}. These are good, carefully-built rules, and
+we keep Oort as a baseline. Their limitation for us is that the rule is fixed in
+advance; it does not adapt to a fleet whose conditions drift.
+
+\subsection{Learning to Select}
+A second line treats selection as a sequential decision problem and optimizes it
+with reinforcement learning~\cite{wang2020}. This is the closest in spirit to our
+work. The difference is that these methods learn one policy over the whole fleet,
+whereas we place a policy on each edge cluster and, more importantly, let those
+policies exchange what they learn through the same cloud that already aggregates
+the model.
+
+\subsection{Multi-Agent RL and Centralized Critics}
+Our agents are trained with PPO~\cite{schulman2017} and Generalized Advantage
+Estimation~\cite{gae2016}. When we give them a shared value function while keeping
+their actors separate, we are following the MAPPO recipe~\cite{yu2022}. The twist
+here is that our agents also pass policy parameters to one another through a
+federation step, which binds the multi-agent learning to the FL communication
+structure rather than leaving it as a separate training detail.
+
+\subsection{Privacy}
+Differential privacy in FL is normally applied to the model
+updates~\cite{abadi2016}. We instead try adding noise to the shared \emph{policy},
+and we are careful to call our result utility robustness rather than a formal
+guarantee, leaving an $(\varepsilon,\delta)$ accounting for later.
+
+\subsection{The Closest Work and What We Add}
+As summarized in Table~\ref{tab:related}, prior work addresses the pieces
+separately: FedAvg selects nothing in particular; heuristic selectors are fixed
+rules; single-agent RL learns to select but without hierarchy or sharing. To our
+knowledge, the combination of per-cluster RL selection with a federated selection
+policy, on a cadence decoupled from model aggregation, has not been studied, and
+that combination is what we build and measure.
+
+\begin{table}[t]
+\caption{Method-level comparison with representative prior work. The comparison is
+of \emph{approaches}, not numerical results.}
+\label{tab:related}
+\centering
+\footnotesize
+\begin{tabular}{p{1.5cm}p{3.0cm}p{2.6cm}}
+\toprule
+Work & Selection approach & What we add \\
+\midrule
+FedAvg~\cite{mcmahan2017} & Random / all available; no learning. & A learned,
+resource-aware selector. \\
+FedCS~\cite{nishio2019}, Oort~\cite{lai2021} & Fixed heuristic (deadline / utility
+score). & A policy that adapts and is shared across clusters. \\
+Single-agent RL~\cite{wang2020} & One RL policy over the whole fleet. & Per-cluster
+agents plus policy federation. \\
+\textbf{FedRL-CS (ours)} & \textbf{Per-cluster RL actors; policy federated on a
+decoupled cadence $T_{RL}$, blend $\alpha$; optional central critic.} &
+\textbf{---} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{System and Problem Model}
+\subsection{Network and Cluster Model}
+We consider $N$ clients split across $C$ edge clusters; cluster $c$ holds a client
+set $\mathcal{C}_c$. A cloud server keeps the global model $\theta$. Each client
+$k$ owns a local dataset $D_k$ drawn non-IID from a shared distribution, and
+carries a system state that drifts over a run: compute speed, battery level,
+upload bandwidth, latency, and a staleness counter. What travels on the network is
+small---model weights down, model updates up---so the sensitive data stays on the
+device.
+
+\subsection{The Round}
+In round $t$ each cluster selects at most $k_{\mathrm{sel}}$ of its available
+clients. The selected clients train locally and try to upload their update; the
+upload is simulated with bandwidth contention and a round deadline, and any update
+that misses the deadline is dropped rather than silently kept. The arrived updates
+are aggregated by FedAvg and the global model is evaluated.
+
+\subsection{What We Measure}
+We report three things every round, not just the last accuracy. The first is
+global test accuracy. The second is the energy the selected clients spent. The
+third is the Gini coefficient of cumulative participation, which is $0$ when every
+client has been used equally often and approaches $1$ when a few devices do all
+the work. Because these three pull against each other, we do not assume a single
+best method and instead compare on all three.
+
+\section{Proposed Framework: FedRL-CS}
+\label{sec:method}
+\subsection{Overview}
+Figure~\ref{fig:arch} gives the picture. Each cluster runs an RL actor that picks
+clients; the cloud does two separate jobs, aggregating the model every $T_{FL}$
+rounds and federating the selection policies every $T_{RL}$ rounds. We describe
+each part below.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.92\columnwidth]{figs/architecture.png}
+\caption{FedRL-CS. Per-cluster RL actors select clients; the cloud aggregates the
+model every $T_{FL}$ rounds and, on a separate cadence $T_{RL}$, federates the
+selection policies with blend $\alpha$. The centralized critic (MAPPO variant)
+supplies a shared value baseline.}
+\label{fig:arch}
+\end{figure}
+
+\subsection{Learning to Select}
+For cluster $c$ the actor sees a state matrix $s_c\in\mathbb{R}^{N_c\times5}$, one
+row per client holding compute, battery, bandwidth, staleness, and last local
+loss, together with an availability mask, and it picks $k_{\mathrm{sel}}$ clients
+one at a time. After the round it receives a scalar reward
+\begin{equation}
+r = w_{a}\,\Delta\mathrm{acc} - w_{e}\,E - w_{f}\,\mathrm{Gini},
+\label{eq:reward}
+\end{equation}
+where $\Delta\mathrm{acc}$ is the round's accuracy gain, $E$ the energy of the
+selected clients, and $\mathrm{Gini}$ the participation inequality. Using the
+accuracy \emph{delta} rather than the absolute value keeps the reward from drifting
+as the model improves. Each actor is a small shared-encoder network trained with
+PPO, and we hold the PPO update cadence identical across every RL method so that
+none of them gets a larger gradient budget than another.
+
+\subsection{Federating the Policy}
+The new part is a second sharing channel. Every $T_{RL}$ rounds the cloud averages
+the cluster policies into a meta-policy $\bar{\phi}=\frac{1}{C}\sum_c\phi_c$ and
+sends back a soft update,
+\begin{equation}
+\phi_c \leftarrow \alpha\,\phi_c + (1-\alpha)\,\bar{\phi},
+\label{eq:soft}
+\end{equation}
+where $\alpha\!=\!1$ leaves each policy alone (no federation) and $\alpha\!=\!0$
+replaces it entirely with the consensus. Because $T_{RL}$ is set independently of
+$T_{FL}$, the selection strategy and the model do not have to move in lockstep;
+that decoupling is the technical heart of the method. Only policy parameters cross
+the network, so the privacy posture is the same as ordinary FL.
+
+\subsection{A Shared Critic}
+Independent per-cluster critics have no way to credit a selection that was good for
+the fleet as a whole. So we add a variant in which the actors stay separate but
+share one centralized critic $V(\bar{s})$ over a pooled global state, and all
+actors are updated against the shared advantage---the MAPPO
+recipe~\cite{yu2022}---while the policy federation runs on the actors as before.
+
+\begin{algorithm}[t]
+\caption{FedRL-CS round (federated multi-agent variant)}
+\label{alg:main}
+\begin{algorithmic}[1]
+\STATE \textbf{for} each round $t=1\ldots T$ \textbf{do}
+\STATE \quad refresh client availability (churn, battery)
+\STATE \quad \textbf{for} each cluster $c$: $A_c \leftarrow \pi_{\phi_c}(s_c)$
+\STATE \quad clients in $\bigcup_c A_c$ train locally; incur energy $E$
+\STATE \quad simulate uploads; drop stragglers past the deadline
+\STATE \quad aggregate arrived updates (FedAvg); evaluate accuracy
+\STATE \quad compute reward \eqref{eq:reward}; store transitions
+\STATE \quad \textbf{if} $t \bmod T_{\text{PPO}}=0$: PPO-update each actor
+\STATE \quad \textbf{if} $t \bmod T_{RL}=0$: federate policies via \eqref{eq:soft}
+\STATE \textbf{end for}
+\end{algorithmic}
+\end{algorithm}
+
+\section{Experimental Setup}
+\label{sec:setup}
+\subsection{Data and Partition}
+We run on a synthetic multi-class classification task and split it across the
+clients with a Dirichlet label skew ($\alpha_D=0.5$), so no two clients see the
+same class mix~\cite{hsu2019}. The model is a multilayer perceptron trained by
+FedAvg. We chose synthetic tabular data deliberately, to keep the runs fast on a
+CPU and to keep the study focused on selection rather than on model architecture;
+the cost of that choice is discussed in Section~\ref{sec:limits}.
+
+\subsection{Energy and Network}
+Energy is reported in joules using a grounded model that adds local-training
+compute to the radio cost of an upload,
+\begin{equation}
+E_k = e_{\text{mac}}\,\frac{P\,n_k\,e_{\text{ep}}\,f}{\eta_k} + e_{\text{bit}}\,8B,
+\end{equation}
+with model parameters $P$, local samples $n_k$, epochs $e_{\text{ep}}$, a
+forward--backward factor $f$, device efficiency $\eta_k$, and upload size $B$
+bytes. The constants are order-of-magnitude mobile values and are left as
+configuration. Uploads run over a contended link with a round deadline tuned so
+that $8$--$15\%$ of them straggle and are dropped.
+
+\subsection{Baselines and Metrics}
+We compare against Random, Full Participation, Oort~\cite{lai2021}, and a single
+Centralized RL agent, and we report final accuracy, cumulative energy, and
+final-round Gini. The comparison that matters most is FedRL-CS against Centralized
+RL, because it asks directly whether federating the policy beats simply having one
+large agent. Every configuration is repeated over $20$ seeds and we quote the mean
+with its standard deviation; for the main contrast we add a paired $t$-test and a
+$95\%$ bootstrap confidence interval.
+
+\subsection{Implementation}
+The framework is written in Python on PyTorch. Each run writes its config, its
+data split, and its seed to a file, so every number in this paper can be traced
+back to the settings that produced it.
+
+\section{Results and Discussion}
+\label{sec:results}
+\subsection{The Main Comparison}
+Table~\ref{tab:main} lists the five methods. FedRL-CS lands at an accuracy that is
+statistically indistinguishable from both Centralized RL and Random, while its
+energy and Gini sit well below Centralized RL, Full, and Oort. Set against
+Centralized RL it uses $28.5\%$ less energy and has $14.8\%$ lower Gini. The
+paired test over the $20$ seeds makes both gaps decisive---energy gap $22.8$\,J,
+$95\%$\,CI $[21.9,23.8]$, $p\approx1.2\times10^{-20}$; Gini gap $0.085$, CI
+$[0.080,0.089]$, $p\approx7.1\times10^{-19}$---while the accuracy gap of
+$+0.69$\,pp does not reach significance ($p=0.07$). Figure~\ref{fig:tradeoff}
+shows why the picture is clean: FedRL-CS sits on the low-energy edge at the same
+height as the best baselines. The reason is not mysterious. Per-cluster selection
+is forced to spread the training load across clusters, so it avoids leaning on the
+weak, low-efficiency devices that a single global agent keeps drafting because
+they happen to look useful.
+
+\begin{table}[t]
+\caption{Main comparison ($40$ clients, $4$ clusters, $100$ rounds, $20$ seeds),
+mean$\pm$std. Energy in joules; lower Gini is fairer.}
+\label{tab:main}
+\centering
+\begin{tabular}{lccc}
+\toprule
+Method & Accuracy (\%) & Energy (J) & Gini \\
+\midrule
+\textbf{FedRL-CS (ours)} & $62.17\pm2.51$ & $\mathbf{57.32}$ & $\mathbf{0.487}$ \\
+Random & $62.39\pm2.06$ & $57.42$ & $0.487$ \\
+Centralized RL & $61.48\pm2.52$ & $80.12$ & $0.572$ \\
+Full Participation & $61.10\pm2.72$ & $84.28$ & $0.569$ \\
+Oort~\cite{lai2021} & $61.36\pm2.93$ & $55.48$ & $0.563$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.93\columnwidth]{figs/accuracy_energy_tradeoff_v2.png}
+\caption{Accuracy against energy. FedRL-CS and Random hold the low-energy edge at
+the same accuracy as Centralized RL and Full Participation, which cost far more.}
+\label{fig:tradeoff}
+\end{figure}
+
+\subsection{Is It Just the Cadence?}
+One worry is that the result is an accident of how often PPO updates. So we ran the
+two RL methods again with the update cadence moved from $1$ to $3$. Nothing of
+substance changes: FedRL-CS against Centralized RL is $-28.6\%$ energy, $-14.6\%$
+Gini, and again a tie on accuracy ($+0.65$\,pp, not significant). The efficiency
+and fairness advantages do not depend on that setting.
+
+\subsection{Is It Just the Reward?}
+A sharper worry is circularity: the agent is rewarded for low energy and fairness,
+so of course it scores well on them. We test this head-on by sweeping the reward
+weights, including an accuracy-only setting with the energy and fairness terms
+removed entirely. Even then FedRL-CS uses about $5$\,J less energy and has about
+$0.04$ lower Gini than Centralized RL---essentially the same gap as with the full
+reward (Figure~\ref{fig:reward}). The advantage is therefore built into the
+structure of hierarchical selection, not handed to it by the reward, which is the
+honest answer to the circularity question.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.93\columnwidth]{figs/reward_ablation_v2.png}
+\caption{Reward-weight ablation. FedRL-CS keeps its energy advantage over
+Centralized RL even with the energy and fairness reward terms set to zero
+(\emph{accuracy\_only}); the gap is structural.}
+\label{fig:reward}
+\end{figure}
+
+\subsection{When Does the RL Earn Its Keep?}
+On the easy task the RL selectors only tie random selection on accuracy, which
+fairly raises the question of what the policy is for. Two results answer it. The
+first is that the policies plainly learn: Figure~\ref{fig:learn} shows the
+per-round reward climbing over training for both agents, from $-0.17$ to $-0.08$
+for Centralized RL and from $-0.04$ to $-0.02$ for FedRL-CS, with FedRL-CS ahead
+throughout. The second is that when we make selection actually matter---an extreme
+non-IID split ($\alpha_D\!=\!0.1$) with a tight budget ($k_{\mathrm{sel}}\!=\!3$)
+---FedRL-CS reaches $46.1\%$ accuracy against $43.6\%$ for random ($+2.48$\,pp) and
+$44.4\%$ for Centralized RL ($+1.73$\,pp), while still spending far less energy and
+staying fairer. The RL edge shows up exactly where the problem is hard, which is
+where it should.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.93\columnwidth]{figs/learning_curve_v2.png}
+\caption{RL learning curves (per-round reward, $5$-round moving average, $20$
+seeds). Both agents improve over training; FedRL-CS reaches higher reward.}
+\label{fig:learn}
+\end{figure}
+
+\subsection{A Shared Critic Helps a Little}
+Replacing the independent critics with one centralized critic raises accuracy from
+$63.03\%$ to $63.86\%$, a gain of $0.83$ points, and it tightens the variance, at
+the same energy and fairness (Table~\ref{tab:ext}). The credit-assignment signal a
+shared critic provides is worth having, and the energy and fairness advantage over
+Centralized RL survives the change.
+
+\subsection{Privacy and Personalization}
+Adding Gaussian noise to the shared policy, up to a standard deviation of $1.0$,
+leaves accuracy, energy, and Gini untouched, which says the federated selection
+policy is robust to differential-privacy noise: here, privacy is close to free. We
+flag one measurement caveat honestly---because the same noised policy is sent to
+every cluster, our pairwise policy-similarity metric cannot see the noise, so we
+report utility robustness rather than a similarity curve, and leave a formal
+$(\varepsilon,\delta)$ analysis for later. A personalized variant that shares only
+the backbone and keeps each cluster's decision head local behaves as designed, with
+policy similarity moving from $1.00$ when fully shared to $0.57$ when personalized
+to $0.32$ when fully local, but it does not change the task numbers on this
+benchmark. We report it as a mechanism that works, not as a win.
+
+\subsection{Scaling Up}
+At $200$ clients in $8$ clusters the energy saving holds: FedRL-CS uses $9\%$ less
+energy than Centralized RL at tied accuracy. The fairness gap narrows to $3\%$, as
+more clusters dilute any single agent's ability to over-concentrate on a few
+devices, but the core efficiency benefit is clearly not an artifact of small scale.
+
+\begin{table}[t]
+\caption{Extensions: centralized critic, and scale to $200$ clients. Energy in
+joules.}
+\label{tab:ext}
+\centering
+\begin{tabular}{lccc}
+\toprule
+Setting & Accuracy (\%) & Energy (J) & Gini \\
+\midrule
+MAPPO (central critic) & $63.86\pm1.89$ & $55.70$ & $0.484$ \\
+FedRL-CS (indep.\ critics) & $63.03\pm2.20$ & $55.54$ & $0.483$ \\
+Centralized RL & $62.53\pm3.13$ & $79.07$ & $0.571$ \\
+\midrule
+FedRL-CS @ $200$ clients & $46.90\pm1.63$ & $94.73$ & $0.314$ \\
+Centralized RL @ $200$ & $46.82\pm1.49$ & $104.66$ & $0.322$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{What the Results Add Up To}
+Read together the numbers tell one consistent story. On accuracy the method does
+not beat a good baseline, and we do not claim it does. What it does, and does
+significantly and repeatably, is reach that same accuracy for meaningfully less
+energy and with markedly fairer participation, and it does so because of how the
+selection is structured rather than because of what it is rewarded for. The
+architecture is also extensible---a shared critic buys a little accuracy, the
+saving carries to larger fleets, and the shared policy takes privacy noise without
+flinching. The one place accuracy moves is the hard-selection setting, which is
+the honest signpost toward where this should be taken next.
+
+\section{Limitations}
+\label{sec:limits}
+Two limits are worth stating plainly. First, the whole study runs on synthetic
+data, and the energy, battery, network, and churn behaviour are modeled rather
+than measured; the percentages here should be read as evidence about mechanism,
+not as field-calibrated numbers. Second, the scale is modest, $40$ to $200$
+clients, and the multi-agent learning uses PPO with a shared or centralized critic
+rather than a heavier credit-assignment scheme. The differential-privacy result
+establishes robustness of utility, not a formal privacy bound. We treat each of
+these as a stated direction, not something tucked out of sight.
+
+\section{Conclusion and Future Work}
+We presented FedRL-CS, which federates the client-\emph{selection} policy---not
+only the model---across the edge clusters of a two-tier FL system, on a cadence
+decoupled from model aggregation. Over $20$ seeds it matches a centralized RL agent
+on accuracy while cutting device energy by $28\%$ and participation inequality by
+$15\%$, and a reward ablation shows the saving is structural. A shared critic adds
+a little accuracy, the saving holds at larger scale, and the policy tolerates
+privacy noise. The clear next step is to move off synthetic data onto a real
+federated benchmark such as the LEAF suite, with a measured device-energy model,
+and from there to a formal privacy accounting and larger deployments. All code,
+configurations, and per-seed logs are released to support reproduction.
+
+\begin{thebibliography}{00}
+\bibitem{mcmahan2017} B.~McMahan, E.~Moore, D.~Ramage, S.~Hampson, and
+B.~A.~y~Arcas, ``Communication-efficient learning of deep networks from
+decentralized data,'' in \emph{Proc. AISTATS}, 2017, pp.~1273--1282.
+\bibitem{kairouz2021} P.~Kairouz \emph{et al.}, ``Advances and open problems in
+federated learning,'' \emph{Found. Trends Mach. Learn.}, vol.~14, no.~1--2,
+pp.~1--210, 2021.
+\bibitem{konecny2016} J.~Kone\v{c}n\'y \emph{et al.}, ``Federated learning:
+Strategies for improving communication efficiency,'' \emph{arXiv:1610.05492},
+2016.
+\bibitem{hsu2019} T.-M.~H.~Hsu, H.~Qi, and M.~Brown, ``Measuring the effects of
+non-identical data distribution for federated visual classification,''
+\emph{arXiv:1909.06335}, 2019.
+\bibitem{nishio2019} T.~Nishio and R.~Yonetani, ``Client selection for federated
+learning with heterogeneous resources in mobile edge,'' in \emph{Proc. IEEE ICC},
+2019, pp.~1--7.
+\bibitem{lai2021} F.~Lai, X.~Zhu, H.~V.~Madhyastha, and M.~Chowdhury, ``Oort:
+Efficient federated learning via guided participant selection,'' in \emph{Proc.
+USENIX OSDI}, 2021, pp.~19--35.
+\bibitem{wang2020} H.~Wang, Z.~Kaplan, D.~Niu, and B.~Li, ``Optimizing federated
+learning on non-IID data with reinforcement learning,'' in \emph{Proc. IEEE
+INFOCOM}, 2020, pp.~1698--1707.
+\bibitem{schulman2017} J.~Schulman, F.~Wolski, P.~Dhariwal, A.~Radford, and
+O.~Klimov, ``Proximal policy optimization algorithms,'' \emph{arXiv:1707.06347},
+2017.
+\bibitem{gae2016} J.~Schulman, P.~Moritz, S.~Levine, M.~Jordan, and P.~Abbeel,
+``High-dimensional continuous control using generalized advantage estimation,'' in
+\emph{Proc. ICLR}, 2016.
+\bibitem{yu2022} C.~Yu \emph{et al.}, ``The surprising effectiveness of PPO in
+cooperative multi-agent games,'' in \emph{Proc. NeurIPS Datasets and Benchmarks},
+2022.
+\bibitem{abadi2016} M.~Abadi \emph{et al.}, ``Deep learning with differential
+privacy,'' in \emph{Proc. ACM CCS}, 2016, pp.~308--318.
+\end{thebibliography}
+
+\end{document}

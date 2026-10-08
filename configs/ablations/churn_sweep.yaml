@@ -1,0 +1,65 @@
+# configs/ablations/churn_sweep.yaml
+# ------------------------------------
+# ABLATION: Churn severity sweep.
+# Tests none / mild / aggressive dropout rates.
+
+seed: 42
+num_seeds: 3
+num_clients: 20
+num_clusters: 3
+clients_per_cluster: [7, 7, 6]
+num_classes: 10
+num_features: 20
+num_rounds: 50
+T_FL: 1
+T_RL: 5
+methods:
+  - random
+  - oort
+  - federated_marl
+
+federation:
+  alpha: 0.5
+  mode: soft
+
+rl:
+  k_select: 5
+  lr_actor: 3.0e-4
+  lr_critic: 1.0e-3
+  ppo_epochs: 3
+  clip_eps: 0.2
+  entropy_coef: 0.01
+  reward_weights:
+    accuracy: 1.0
+    energy: 0.1
+    fairness: 0.05
+
+fl:
+  local_epochs: 2
+  batch_size: 32
+  lr: 0.01
+  hidden1: 128
+  hidden2: 64
+
+data:
+  dirichlet_alpha: 0.5
+  num_samples_per_client: 200
+
+# Default churn (overridden per ablation run)
+churn:
+  mode: mild
+  dropout_prob: 0.1
+  battery_drain_per_round: 0.05
+
+network:
+  round_deadline: 30.0
+
+logging:
+  save_csv: true
+  save_plots: true
+  results_dir: results/ablations/churn/
+  verbose: false
+
+ablation:
+  parameter: churn.dropout_prob
+  values: [0.0, 0.1, 0.3]    # none / mild / aggressive

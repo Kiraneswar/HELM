@@ -1,0 +1,6 @@
+method,label,num_seeds,num_rounds,final_acc_mean,final_acc_std,final_loss_mean,final_loss_std,total_energy_mean,total_energy_std,final_gini_mean,final_gini_std
+random,Random,5,100,0.64088,0.01387,1.16735,0.02107,19.79577,0.87311,0.49392,0.01796
+full,Full Participation,5,100,0.6295,0.02616,1.18339,0.03672,22.5405,1.10938,0.57835,0.01364
+oort,Oort (Heuristic),5,100,0.61788,0.02781,1.23967,0.07248,19.76797,0.99816,0.57361,0.02727
+centralized_rl,Centralized RL,5,100,0.635,0.02568,1.17593,0.03587,21.05596,0.71341,0.58246,0.01462
+federated_marl,Federated MARL (Ours),5,100,0.63975,0.02022,1.17097,0.03294,19.49832,0.73068,0.49607,0.02055

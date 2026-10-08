@@ -1,0 +1,48 @@
+# Datasets & external cloned repos
+data/
+FedScale/
+*.png
+!visual_abstract.png
+!accuracy_tie_ue1_vs_ue3.png
+IMAGES/
+
+# Node & Frontend build outputs
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+dist-ssr/
+frontend/dist-ssr/
+
+# Python caches and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+
+# Large archives, binaries, and compiled documents
+*.zip
+*.tar.gz
+*.rar
+*.7z
+*.pdf
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# IDE and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo

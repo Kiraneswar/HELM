@@ -1,0 +1,101 @@
+FEDRL-CS ARCHITECTURE FIGURE — HOW TO MAKE IT
+==============================================
+Honest note first: text-to-image AIs (Midjourney, DALL-E, etc.) are BAD at
+technical architecture diagrams — they garble the labels and draw the wrong
+arrows. Option B (a diagram tool) or Option C (Mermaid) will give you a clean,
+correct, paper-quality figure much faster. Option A (image prompt) is included
+because you asked, but expect to fix the text by hand.
+
+The exact thing the figure must show (keep this correct in whichever tool):
+  - THREE tiers, top to bottom: CLOUD -> 4 EDGE CLUSTERS -> DEVICES.
+  - The KEY novelty is TWO separate channels between cloud and edges:
+      (1) MODEL aggregation every T_FL rounds  (solid line)
+      (2) POLICY federation every T_RL rounds, soft-update alpha  (dashed line)
+    Draw these as two visibly different arrows so a reviewer sees the two cadences.
+  - Each edge cluster contains an "RL actor (PPO)" that selects clients.
+  - A side note lists the per-round pipeline.
+
+================================================================
+OPTION A — IMAGE-GENERATION PROMPT (paste into an image AI)
+================================================================
+A clean, flat, professional technical architecture diagram for a federated-
+learning research paper, white background, minimal vector style, thin rounded
+rectangles, crisp sans-serif labels, muted blue and grey with one pink accent.
+Layout in three horizontal tiers. TOP tier: a single wide box labeled "CLOUD
+SERVER" containing two stacked sub-boxes: "FedAvg model aggregation (every T_FL)"
+and "Policy federation: average policies + soft-update alpha (every T_RL)". MIDDLE
+tier: four equal boxes side by side labeled "Edge Cluster 1" to "Edge Cluster 4",
+the first tagged "weak / mobile", the last tagged "strong / fixed"; each edge box
+contains a small chip icon labeled "RL actor (PPO)". BOTTOM tier: under each edge
+box a small row of four phone / IoT device icons, two of them highlighted to mean
+"selected clients". Connect the cloud to every edge box with TWO distinct arrows:
+a solid blue double-arrow labeled "model" and a dashed pink double-arrow labeled
+"policy". Connect each edge box down to its devices with a thin arrow labeled
+"select, train, upload". Modern flat infographic, generous whitespace, no
+photorealism, no 3D, publication quality, high resolution.
+
+(If the AI mangles the words: generate the boxes/icons only, then add all text
+yourself in PowerPoint / Canva.)
+
+================================================================
+OPTION B — BUILD IT IN draw.io / Excalidraw / PowerPoint (recommended)
+================================================================
+Elements to place (top to bottom):
+1. One wide rounded box, top: "CLOUD SERVER".
+   Inside it, two small boxes:
+     - "FedAvg model aggregation  (every T_FL rounds)"
+     - "Policy federation: phi_bar = mean(phi_c);  phi_c <- alpha*phi_c + (1-alpha)*phi_bar   (every T_RL rounds)"
+   (optional third box: "Centralized critic V(s)  — MAPPO variant")
+2. A row of FOUR rounded boxes: "Edge Cluster 1 (weak/mobile)", "Edge Cluster 2",
+   "Edge Cluster 3", "Edge Cluster 4 (strong/fixed)". Each contains: "RL actor
+   (PPO)  ->  selects k clients" and "local policy phi_c".
+3. Under each edge box, a small cluster of 4-5 device icons; shade 2 of them and
+   label once "selected clients".
+CONNECTIONS:
+- Cloud <-> each Edge: draw TWO parallel links.
+    * Solid line, label "model (T_FL)".
+    * Dashed line, label "policy (T_RL, alpha)".
+  This dual-channel is the whole point — make the two lines clearly different.
+- Edge -> its devices: one arrow labeled "select / train / upload (drop stragglers
+  past deadline)".
+RIGHT-SIDE CALLOUT (like the reference paper's numbered list): a small box titled
+"Per round":
+  1) Each cluster's RL actor selects k clients
+  2) Selected clients train locally (incur energy)
+  3) Upload; stragglers past the deadline are dropped
+  4) FedAvg over arrived updates
+  5) Every T_RL rounds: federate the selection policy
+COLORS: cloud = blue, edges = grey, "ours"/policy accents = pink, device icons =
+light grey. Keep labels large and legible.
+
+================================================================
+OPTION C — MERMAID (renders instantly at mermaid.live, export PNG/SVG)
+================================================================
+flowchart TB
+  subgraph CLOUD["CLOUD SERVER"]
+    A1["FedAvg model aggregation\n(every T_FL rounds)"]
+    A2["Policy federation\navg policies + soft-update α\n(every T_RL rounds)"]
+    A3["Centralized critic V(s)\n(MAPPO variant)"]
+  end
+  subgraph EDGES[" "]
+    direction LR
+    E1["Edge Cluster 1\n(weak / mobile)\nRL actor (PPO) φ1"]
+    E2["Edge Cluster 2\nRL actor (PPO) φ2"]
+    E3["Edge Cluster 3\nRL actor (PPO) φ3"]
+    E4["Edge Cluster 4\n(strong / fixed)\nRL actor (PPO) φ4"]
+  end
+  D1["devices 1..n"]; D2["devices 1..n"]; D3["devices 1..n"]; D4["devices 1..n"]
+  CLOUD == "model (T_FL)" ==> E1 & E2 & E3 & E4
+  CLOUD -. "policy (T_RL, α)" .-> E1 & E2 & E3 & E4
+  E1 --> D1; E2 --> D2; E3 --> D3; E4 --> D4
+  classDef cloud fill:#eef4ff,stroke:#2196F3;
+  classDef edge fill:#f4f6f9,stroke:#9aa3af;
+  class CLOUD,A1,A2,A3 cloud
+  class E1,E2,E3,E4 edge
+
+(In Mermaid the solid "==>" is the model channel and the dashed "-.->'' is the
+policy channel — the two cadences read at a glance. Tidy labels/spacing after
+export.)
+
+WHERE IT GOES: save your final image as paper/figs/architecture.png (overwrite the
+current one) and the paper compiles unchanged — Fig. 2 already points at that file.
